@@ -3,17 +3,12 @@ import re
 
 import datasets
 from datasets import DownloadManager, DatasetInfo
-from transformers import T5Tokenizer, TFT5Model
-from transformers.data.data_collator import DataCollatorForSeq2Seq
 import sqlite3
-
-from T5SQL.spider.args import DataArguments, spider_add_serialized_schema
-from T5SQL.spider.seq2seq_trainer import SpiderTrainer
 
 _URL = "https://drive.google.com/uc?export=download&id=1_AckYkinAnhqmRQtGsQgUKAnTHxxX5J0"
 
 
-class Spider(datasets.GeneratorBasedBuilder):
+class SpiderDatasets(datasets.GeneratorBasedBuilder):
     VERSION = datasets.Version("1.0.0")
 
     BUILDER_CONFIGS = [
@@ -175,38 +170,20 @@ def dump_db_json_schema(db, f):
     return data
 
 
-def preprocess(dataset, data_training_args):
-    dataset = dataset.map(
-        spider_add_serialized_schema,
-        batched=False,
-        num_proc=data_training_args.preprocessing_num_workers,
-        load_from_cache_file=not data_training_args.overwrite_cache,
-    )
-    dataset = dataset.map(
+def load():
+    train_dataset = datasets.load.load_dataset("./spider/train_spider.json")
+    train_dataset.map(
         lambda batch: spider_pre_process_function(
             batch=batch,
-            max_source_length=data_training_args.max_source_length,
-            max_target_length=data_training_args.max_target_length,
-            data_training_args=data_training_args,
-            tokenizer=data_training_args
+            max_source_length=64,
+            max_target_length=128,
         ),
         batched=True,
         num_proc=1,
         remove_columns=train_dataset.column_names,
         load_from_cache_file=False,
     )
-
-    return dataset
-
-
-def load():
-    dataset = datasets.load.load_dataset("./spider")
-    train_dataset = dataset["train"]
-    validation_dataset = dataset["validation"]
-    data_training_args = DataArguments()
-    train_dataset = preprocess(train_dataset, data_training_args)
-    validation_dataset = preprocess(validation_dataset, data_training_args)
-    return train_dataset, validation_dataset
+    return train_dataset
 
 
 def normalize(query: str) -> str:
@@ -287,84 +264,3 @@ def spider_pre_process_function(
 
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
-
-
-tokenizer = T5Tokenizer.from_pretrained('t5-small')
-model = TFT5Model.from_pretrained('t5-small')
-
-input_ids = tokenizer("Studies have been shown that owning a dog is good for you",
-                      return_tensors="tf").input_ids  # Batch size 1
-decoder_input_ids = tokenizer("Studies show that", return_tensors="tf").input_ids  # Batch size 1
-outputs = model(input_ids, decoder_input_ids=decoder_input_ids)
-# create file spider.py inside spider directory with above cell content
-dataset = datasets.load.load_dataset(path="./spider")
-metric = datasets.load.load_metric(
-    path="./spider", config_name="both", test_suite_db_dir=None
-)
-train_dataset = dataset["train"]
-validation_dataset = dataset["validation"]
-
-training_args = {
-    "run_name": "t5-spider",
-    "model_name_or_path": "t5-3b",
-    "dataset": "spider",
-    "source_prefix": "",
-    "schema_serialization_type": "peteshaw",
-    "schema_serialization_randomized": False,
-    "schema_serialization_with_db_id": True,
-    "schema_serialization_with_db_content": True,
-    "normalize_query": True,
-    "target_with_db_id": True,
-    "output_dir": "/train",
-    "cache_dir": "/transformers_cache",
-    "do_train": True,
-    "do_eval": True,
-    "fp16": False,
-    "num_train_epochs": 3072,
-    "per_device_train_batch_size": 5,
-    "per_device_eval_batch_size": 5,
-    "gradient_accumulation_steps": 410,
-    "label_smoothing_factor": 0.0,
-    "learning_rate": 1e-4,
-    "adafactor": True,
-    "adam_eps": 1e-6,
-    "lr_scheduler_type": "constant",
-    "warmup_ratio": 0.0,
-    "warmup_steps": 0,
-    "seed": 1,
-    "report_to": ["wandb"],
-    "logging_strategy": "steps",
-    "logging_first_step": True,
-    "logging_steps": 4,
-    "load_best_model_at_end": True,
-    "metric_for_best_model": "exact_match",
-    "greater_is_better": True,
-    "save_total_limit": 128,
-    "save_steps": 64,
-    "evaluation_strategy": "steps",
-    "eval_steps": 64,
-    "predict_with_generate": True,
-    "num_beams": 1,
-    "num_beam_groups": 1,
-    "use_picard": False
-}
-
-trainer_kwargs = {
-    "model": model,
-    "args": training_args,
-    "metric": metric,
-    "train_dataset": train_dataset,
-    "eval_dataset": validation_dataset,
-    "eval_examples": None,
-    "tokenizer": tokenizer,
-    "data_collator": DataCollatorForSeq2Seq(
-        tokenizer,
-        model=model,
-        label_pad_token_id=(-100),
-        pad_to_multiple_of=None,
-    ),
-    "ignore_pad_token_for_loss": True,
-    "target_with_db_id": True,
-}
-
-trainer = SpiderTrainer(**trainer_kwargs)

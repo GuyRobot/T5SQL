@@ -488,22 +488,3 @@ def spider_add_serialized_schema(ex: dict, data_training_args: DataArguments) ->
     )
     return {"serialized_schema": serialized_schema}
 
-
-from transformers.training_args_seq2seq import Seq2SeqTrainingArguments, TrainingArguments
-
-x = Seq2SeqTrainingArguments(TrainingArguments("/train", overwrite_output_dir=True, do_train=True, do_eval=True,
-                                               fp16=False, num_train_epochs=3072, per_device_train_batch_size=5,
-                                               per_device_eval_batch_size=5, gradient_accumulation_steps=410,
-                                               label_smoothing_factor=0.0,
-                                               learning_rate=1e-4,
-                                               adafactor=True,
-                                               adam_epsilon=1e-6,
-                                               lr_scheduler_type="constant",
-                                               warmup_ratio=.0,
-                                               warmup_steps=0,
-                                               seed=1,
-                                               load_best_model_at_end=True,
-                                               save_total_limit=2,
-                                               save_steps=64,
-                                               evaluation_strategy="steps",
-                                               eval_steps=64, ))
